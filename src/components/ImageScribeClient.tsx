@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import Image from 'next/image';
-import { UploadCloud, Sparkles, AlertTriangle, FileText } from 'lucide-react';
+import { UploadCloud, Sparkles, AlertTriangle, FileText, Volume2, StopCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,13 +24,26 @@ export default function ImageScribeClient() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+
   useEffect(() => {
     return () => {
       if (previewImage && previewImage.startsWith('blob:')) {
         URL.revokeObjectURL(previewImage);
       }
+      if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
     };
   }, [previewImage]);
+
+  const stopSpeech = () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -41,12 +54,14 @@ export default function ImageScribeClient() {
         setPreviewImage(null);
         setCaptions(null);
         setDescription(null);
+        stopSpeech();
         return;
       }
       setSelectedFile(file);
       setCaptions(null);
       setDescription(null);
       setError(null);
+      stopSpeech();
       
       if (previewImage && previewImage.startsWith('blob:')) {
         URL.revokeObjectURL(previewImage);
@@ -64,8 +79,15 @@ export default function ImageScribeClient() {
     setIsLoading(true);
     setLoadingOperation(operation);
     setError(null);
-    setCaptions(null);
-    setDescription(null);
+    setSpeechError(null);
+    stopSpeech();
+
+    if (operation === 'caption') {
+        setCaptions(null);
+    } else {
+        setDescription(null);
+    }
+
 
     const reader = new FileReader();
 
@@ -128,6 +150,44 @@ export default function ImageScribeClient() {
     fileInputRef.current?.click();
   };
 
+  const handleSpeakDescription = () => {
+    if (!description) {
+      setSpeechError("No description available to speak.");
+      return;
+    }
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setSpeechError("Speech synthesis is not supported by your browser.");
+      return;
+    }
+
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    setSpeechError(null);
+    const utterance = new SpeechSynthesisUtterance(description);
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = (event) => {
+      console.error("Speech synthesis error:", event);
+      setSpeechError(`Speech synthesis error: ${event.error || 'Unknown error'}`);
+      setIsSpeaking(false);
+    };
+    
+    window.speechSynthesis.cancel(); // Clear queue
+    window.speechSynthesis.speak(utterance);
+  };
+
+
   return (
     <Card className="w-full max-w-2xl shadow-xl">
       <CardHeader>
@@ -150,12 +210,14 @@ export default function ImageScribeClient() {
                 setPreviewImage(null);
                 setCaptions(null);
                 setDescription(null);
+                stopSpeech();
                 return;
               }
               setSelectedFile(file);
               setCaptions(null);
               setDescription(null);
               setError(null);
+              stopSpeech();
               if (previewImage && previewImage.startsWith('blob:')) {
                 URL.revokeObjectURL(previewImage);
               }
@@ -258,8 +320,8 @@ export default function ImageScribeClient() {
 
         {isLoading && loadingOperation === 'describe' && (
           <div className="space-y-2 pt-4">
-            <Skeleton className="h-6 w-1/3 mb-2" /> {/* Title "Generated Description:" */}
-            <Skeleton className="h-24 w-full" /> {/* Description block */}
+            <Skeleton className="h-6 w-1/3 mb-2" /> 
+            <Skeleton className="h-24 w-full" /> 
           </div>
         )}
 
@@ -286,6 +348,31 @@ export default function ImageScribeClient() {
                 <p className="text-secondary-foreground whitespace-pre-wrap">{description}</p>
               </CardContent>
             </Card>
+            <Button
+              onClick={handleSpeakDescription}
+              disabled={!description || isLoading}
+              className="mt-4 w-full md:w-auto"
+              variant="outline"
+            >
+              {isSpeaking ? (
+                <>
+                  <StopCircle className="mr-2 h-5 w-5 animate-pulse" />
+                  Stop Speaking
+                </>
+              ) : (
+                <>
+                  <Volume2 className="mr-2 h-5 w-5" />
+                  Speak Description
+                </>
+              )}
+            </Button>
+            {speechError && (
+              <Alert variant="destructive" className="mt-2">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Speech Error</AlertTitle>
+                <AlertDescription>{speechError}</AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
       </CardContent>
