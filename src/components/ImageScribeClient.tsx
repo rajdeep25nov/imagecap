@@ -14,7 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 export default function ImageScribeClient() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [caption, setCaption] = useState<string | null>(null);
+  const [captions, setCaptions] = useState<string[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,10 +35,11 @@ export default function ImageScribeClient() {
         setError('Invalid file type. Please upload an image.');
         setSelectedFile(null);
         setPreviewImage(null);
+        setCaptions(null);
         return;
       }
       setSelectedFile(file);
-      setCaption(null);
+      setCaptions(null);
       setError(null);
       
       if (previewImage && previewImage.startsWith('blob:')) {
@@ -56,13 +57,11 @@ export default function ImageScribeClient() {
 
     setIsLoading(true);
     setError(null);
-    setCaption(null);
+    setCaptions(null);
 
     const reader = new FileReader();
 
     reader.onloadend = async () => {
-      // This event fires after the file is successfully read or if reading failed and onerror is not set.
-      // We check reader.error in case of failure if onerror was not specifically triggered.
       if (reader.error) {
         console.error("FileReader error during loadend:", reader.error);
         setError('Failed to read the image file.');
@@ -80,33 +79,29 @@ export default function ImageScribeClient() {
       try {
         const input: GenerateImageCaptionInput = { photoDataUri };
         const result = await generateImageCaption(input);
-        setCaption(result.caption);
+        setCaptions(result.captions);
       } catch (e) {
-        console.error("Error generating caption:", e);
+        console.error("Error generating captions:", e);
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        setError(`Failed to generate caption: ${errorMessage}`);
+        setError(`Failed to generate captions: ${errorMessage}`);
       } finally {
-        setIsLoading(false); // Ensures isLoading is false after caption generation attempt
+        setIsLoading(false);
       }
     };
 
     reader.onerror = () => {
-      // This event fires if an error occurs while reading the file.
       console.error("FileReader onerror triggered");
       setError('Failed to read the image file.');
       setIsLoading(false);
     };
 
     try {
-      // Start reading the file. This is an asynchronous operation.
       reader.readAsDataURL(selectedFile);
     } catch (e) {
-      // This catch block handles synchronous errors from initiating readAsDataURL.
-      // Most errors with FileReader are asynchronous and handled by 'onerror' or 'onloadend' (with reader.error check).
       console.error("Error initiating FileReader.readAsDataURL:", e);
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
       setError(`Failed to process image for reading: ${errorMessage}`);
-      setIsLoading(false); // Set loading to false if read initiation fails synchronously.
+      setIsLoading(false);
     }
   };
   
@@ -119,7 +114,7 @@ export default function ImageScribeClient() {
       <CardHeader>
         <CardTitle className="text-3xl font-bold text-center">Describe Your Image</CardTitle>
         <CardDescription className="text-center">
-          Upload an image and let our AI generate a descriptive caption for you.
+          Upload an image and let our AI generate multiple descriptive captions for you, perfect for social media!
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -134,10 +129,11 @@ export default function ImageScribeClient() {
                 setError('Invalid file type. Please upload an image.');
                 setSelectedFile(null);
                 setPreviewImage(null);
+                setCaptions(null);
                 return;
               }
               setSelectedFile(file);
-              setCaption(null);
+              setCaptions(null);
               setError(null);
               if (previewImage && previewImage.startsWith('blob:')) {
                 URL.revokeObjectURL(previewImage);
@@ -169,8 +165,8 @@ export default function ImageScribeClient() {
                  <Image
                     src={previewImage}
                     alt="Uploaded preview"
-                    fill // Use fill for responsive layout
-                    style={{ objectFit: 'contain' }} // Replaces layout="fill" objectFit="contain"
+                    fill
+                    style={{ objectFit: 'contain' }}
                     data-ai-hint="uploaded image"
                   />
               </div>
@@ -190,12 +186,12 @@ export default function ImageScribeClient() {
           {isLoading ? (
             <>
               <Sparkles className="mr-2 h-5 w-5 animate-pulse" />
-              Generating Caption...
+              Generating Captions...
             </>
           ) : (
             <>
               <Sparkles className="mr-2 h-5 w-5" />
-              Generate Caption
+              Generate Captions
             </>
           )}
         </Button>
@@ -208,21 +204,27 @@ export default function ImageScribeClient() {
           </Alert>
         )}
 
-        {isLoading && !caption && (
+        {isLoading && !captions && (
           <div className="space-y-2 pt-4">
-            <Skeleton className="h-6 w-1/3" />
+            <Skeleton className="h-6 w-1/3 mb-2" />
             <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full mt-2" />
+            <Skeleton className="h-16 w-full mt-2" />
           </div>
         )}
 
-        {caption && !isLoading && (
+        {captions && !isLoading && captions.length > 0 && (
           <div className="pt-4">
-            <h3 className="text-xl font-semibold mb-2 text-foreground">Generated Caption:</h3>
-            <Card className="bg-secondary">
-              <CardContent className="p-4">
-                <p className="text-secondary-foreground">{caption}</p>
-              </CardContent>
-            </Card>
+            <h3 className="text-xl font-semibold mb-2 text-foreground">Generated Captions:</h3>
+            <div className="space-y-3">
+              {captions.map((cap, index) => (
+                <Card key={index} className="bg-secondary">
+                  <CardContent className="p-4">
+                    <p className="text-secondary-foreground whitespace-pre-wrap">{cap}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         )}
       </CardContent>

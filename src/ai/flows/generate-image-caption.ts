@@ -3,7 +3,7 @@
 /**
  * @fileOverview AI-powered image caption generator.
  *
- * - generateImageCaption - A function that generates a caption for an image.
+ * - generateImageCaption - A function that generates multiple captions for an image.
  * - GenerateImageCaptionInput - The input type for the generateImageCaption function.
  * - GenerateImageCaptionOutput - The return type for the generateImageCaption function.
  */
@@ -21,7 +21,7 @@ const GenerateImageCaptionInputSchema = z.object({
 export type GenerateImageCaptionInput = z.infer<typeof GenerateImageCaptionInputSchema>;
 
 const GenerateImageCaptionOutputSchema = z.object({
-  caption: z.string().describe('A descriptive caption for the image.'),
+  captions: z.array(z.string()).describe('An array of 3-5 unique, engaging, and descriptive captions for the image, suitable for social media platforms like Instagram and Facebook.'),
 });
 export type GenerateImageCaptionOutput = z.infer<typeof GenerateImageCaptionOutputSchema>;
 
@@ -33,9 +33,9 @@ const generateImageCaptionPrompt = ai.definePrompt({
   name: 'generateImageCaptionPrompt',
   input: {schema: GenerateImageCaptionInputSchema},
   output: {schema: GenerateImageCaptionOutputSchema},
-  prompt: `You are an AI model that generates descriptive captions for images.
+  prompt: `You are an AI model that generates engaging and descriptive captions for images, suitable for social media platforms like Instagram and Facebook.
 
-  Generate a descriptive caption for the following image:
+  Generate 3-5 unique captions for the following image. The captions should be varied in style (e.g., some short and punchy, some more descriptive, some including a question to engage the audience).
   {{media url=photoDataUri}}
   `,
 });
