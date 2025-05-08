@@ -2,25 +2,29 @@
 
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import Image from 'next/image';
-import { UploadCloud, Sparkles, AlertTriangle } from 'lucide-react';
+import { UploadCloud, Sparkles, AlertTriangle, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { generateImageCaption, type GenerateImageCaptionInput } from '@/ai/flows/generate-image-caption';
+import { describeImage, type DescribeImageInput } from '@/ai/flows/describe-image';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+type LoadingOperation = 'caption' | 'describe' | null;
 
 export default function ImageScribeClient() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [captions, setCaptions] = useState<string[] | null>(null);
+  const [description, setDescription] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingOperation, setLoadingOperation] = useState<LoadingOperation>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Clean up the object URL when the component unmounts or previewImage changes
     return () => {
       if (previewImage && previewImage.startsWith('blob:')) {
         URL.revokeObjectURL(previewImage);
@@ -36,10 +40,12 @@ export default function ImageScribeClient() {
         setSelectedFile(null);
         setPreviewImage(null);
         setCaptions(null);
+        setDescription(null);
         return;
       }
       setSelectedFile(file);
       setCaptions(null);
+      setDescription(null);
       setError(null);
       
       if (previewImage && previewImage.startsWith('blob:')) {
@@ -49,15 +55,17 @@ export default function ImageScribeClient() {
     }
   };
 
-  const handleGenerateCaption = async () => {
+  const processImageWithAI = async (operation: 'caption' | 'describe') => {
     if (!selectedFile) {
       setError('Please upload an image first.');
       return;
     }
 
     setIsLoading(true);
+    setLoadingOperation(operation);
     setError(null);
     setCaptions(null);
+    setDescription(null);
 
     const reader = new FileReader();
 
@@ -66,6 +74,7 @@ export default function ImageScribeClient() {
         console.error("FileReader error during loadend:", reader.error);
         setError('Failed to read the image file.');
         setIsLoading(false);
+        setLoadingOperation(null);
         return;
       }
 
@@ -73,19 +82,27 @@ export default function ImageScribeClient() {
       if (!photoDataUri) {
           setError('Failed to read image data.');
           setIsLoading(false);
+          setLoadingOperation(null);
           return;
       }
 
       try {
-        const input: GenerateImageCaptionInput = { photoDataUri };
-        const result = await generateImageCaption(input);
-        setCaptions(result.captions);
+        if (operation === 'caption') {
+          const input: GenerateImageCaptionInput = { photoDataUri };
+          const result = await generateImageCaption(input);
+          setCaptions(result.captions);
+        } else if (operation === 'describe') {
+          const input: DescribeImageInput = { photoDataUri };
+          const result = await describeImage(input);
+          setDescription(result.description);
+        }
       } catch (e) {
-        console.error("Error generating captions:", e);
+        console.error(`Error generating ${operation}:`, e);
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        setError(`Failed to generate captions: ${errorMessage}`);
+        setError(`Failed to generate ${operation}: ${errorMessage}`);
       } finally {
         setIsLoading(false);
+        setLoadingOperation(null);
       }
     };
 
@@ -93,15 +110,17 @@ export default function ImageScribeClient() {
       console.error("FileReader onerror triggered");
       setError('Failed to read the image file.');
       setIsLoading(false);
+      setLoadingOperation(null);
     };
-
+    
     try {
       reader.readAsDataURL(selectedFile);
     } catch (e) {
-      console.error("Error initiating FileReader.readAsDataURL:", e);
-      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      setError(`Failed to process image for reading: ${errorMessage}`);
-      setIsLoading(false);
+        console.error("Error initiating FileReader.readAsDataURL:", e);
+        const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+        setError(`Failed to process image for reading: ${errorMessage}`);
+        setIsLoading(false);
+        setLoadingOperation(null);
     }
   };
   
@@ -112,9 +131,9 @@ export default function ImageScribeClient() {
   return (
     <Card className="w-full max-w-2xl shadow-xl">
       <CardHeader>
-        <CardTitle className="text-3xl font-bold text-center">Describe Your Image</CardTitle>
+        <CardTitle className="text-3xl font-bold text-center">Analyze Your Image</CardTitle>
         <CardDescription className="text-center">
-          Upload an image and let our AI generate multiple descriptive captions for you, perfect for social media!
+          Upload an image and let our AI generate descriptive captions or a detailed description for you!
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -130,10 +149,12 @@ export default function ImageScribeClient() {
                 setSelectedFile(null);
                 setPreviewImage(null);
                 setCaptions(null);
+                setDescription(null);
                 return;
               }
               setSelectedFile(file);
               setCaptions(null);
+              setDescription(null);
               setError(null);
               if (previewImage && previewImage.startsWith('blob:')) {
                 URL.revokeObjectURL(previewImage);
@@ -177,24 +198,46 @@ export default function ImageScribeClient() {
           </div>
         )}
 
-        <Button
-          onClick={handleGenerateCaption}
-          disabled={!selectedFile || isLoading}
-          className="w-full"
-          size="lg"
-        >
-          {isLoading ? (
-            <>
-              <Sparkles className="mr-2 h-5 w-5 animate-pulse" />
-              Generating Captions...
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-2 h-5 w-5" />
-              Generate Captions
-            </>
-          )}
-        </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Button
+            onClick={() => processImageWithAI('caption')}
+            disabled={!selectedFile || isLoading}
+            className="w-full"
+            size="lg"
+          >
+            {isLoading && loadingOperation === 'caption' ? (
+              <>
+                <Sparkles className="mr-2 h-5 w-5 animate-pulse" />
+                Generating Captions...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-5 w-5" />
+                Generate Captions
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={() => processImageWithAI('describe')}
+            disabled={!selectedFile || isLoading}
+            className="w-full"
+            size="lg"
+            variant="secondary"
+          >
+            {isLoading && loadingOperation === 'describe' ? (
+              <>
+                <FileText className="mr-2 h-5 w-5 animate-pulse" />
+                Generating Description...
+              </>
+            ) : (
+              <>
+                <FileText className="mr-2 h-5 w-5" />
+                Describe Image
+              </>
+            )}
+          </Button>
+        </div>
+        
 
         {error && (
           <Alert variant="destructive">
@@ -204,7 +247,7 @@ export default function ImageScribeClient() {
           </Alert>
         )}
 
-        {isLoading && !captions && (
+        {isLoading && loadingOperation === 'caption' && (
           <div className="space-y-2 pt-4">
             <Skeleton className="h-6 w-1/3 mb-2" />
             <Skeleton className="h-16 w-full" />
@@ -213,7 +256,14 @@ export default function ImageScribeClient() {
           </div>
         )}
 
-        {captions && !isLoading && captions.length > 0 && (
+        {isLoading && loadingOperation === 'describe' && (
+          <div className="space-y-2 pt-4">
+            <Skeleton className="h-6 w-1/3 mb-2" /> {/* Title "Generated Description:" */}
+            <Skeleton className="h-24 w-full" /> {/* Description block */}
+          </div>
+        )}
+
+        {captions && !isLoading && (
           <div className="pt-4">
             <h3 className="text-xl font-semibold mb-2 text-foreground">Generated Captions:</h3>
             <div className="space-y-3">
@@ -225,6 +275,17 @@ export default function ImageScribeClient() {
                 </Card>
               ))}
             </div>
+          </div>
+        )}
+
+        {description && !isLoading && (
+           <div className="pt-4">
+            <h3 className="text-xl font-semibold mb-2 text-foreground">Generated Description:</h3>
+            <Card className="bg-secondary">
+              <CardContent className="p-4">
+                <p className="text-secondary-foreground whitespace-pre-wrap">{description}</p>
+              </CardContent>
+            </Card>
           </div>
         )}
       </CardContent>
