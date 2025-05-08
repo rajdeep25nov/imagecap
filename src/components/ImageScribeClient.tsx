@@ -58,35 +58,56 @@ export default function ImageScribeClient() {
     setError(null);
     setCaption(null);
 
-    try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const photoDataUri = reader.result as string;
+    const reader = new FileReader();
+
+    reader.onloadend = async () => {
+      // This event fires after the file is successfully read or if reading failed and onerror is not set.
+      // We check reader.error in case of failure if onerror was not specifically triggered.
+      if (reader.error) {
+        console.error("FileReader error during loadend:", reader.error);
+        setError('Failed to read the image file.');
+        setIsLoading(false);
+        return;
+      }
+
+      const photoDataUri = reader.result as string;
+      if (!photoDataUri) {
+          setError('Failed to read image data.');
+          setIsLoading(false);
+          return;
+      }
+
+      try {
         const input: GenerateImageCaptionInput = { photoDataUri };
         const result = await generateImageCaption(input);
         setCaption(result.caption);
-      };
-      reader.onerror = () => {
-        setError('Failed to read the image file.');
+      } catch (e) {
+        console.error("Error generating caption:", e);
+        const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+        setError(`Failed to generate caption: ${errorMessage}`);
+      } finally {
+        setIsLoading(false); // Ensures isLoading is false after caption generation attempt
       }
+    };
+
+    reader.onerror = () => {
+      // This event fires if an error occurs while reading the file.
+      console.error("FileReader onerror triggered");
+      setError('Failed to read the image file.');
+      setIsLoading(false);
+    };
+
+    try {
+      // Start reading the file. This is an asynchronous operation.
       reader.readAsDataURL(selectedFile);
     } catch (e) {
-      console.error(e);
+      // This catch block handles synchronous errors from initiating readAsDataURL.
+      // Most errors with FileReader are asynchronous and handled by 'onerror' or 'onloadend' (with reader.error check).
+      console.error("Error initiating FileReader.readAsDataURL:", e);
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      setError(`Failed to generate caption: ${errorMessage}`);
-    } finally {
-      // setIsLoading(false) will be handled in onloadend or onerror of FileReader
-      // to ensure it's set after async operations complete.
-      // For direct errors from generateImageCaption call if reader fails before that
-      if (!(window.FileReader && selectedFile instanceof Blob && reader.readyState !== FileReader.LOADING)) {
-         setIsLoading(false);
-      }
+      setError(`Failed to process image for reading: ${errorMessage}`);
+      setIsLoading(false); // Set loading to false if read initiation fails synchronously.
     }
-     // Listener for FileReader load end to stop loading indicator
-    const readerForLoading = new FileReader();
-    readerForLoading.onloadend = () => setIsLoading(false);
-    readerForLoading.onerror = () => setIsLoading(false);
-    readerForLoading.readAsDataURL(selectedFile);
   };
   
   const triggerFileInput = () => {
@@ -148,8 +169,8 @@ export default function ImageScribeClient() {
                  <Image
                     src={previewImage}
                     alt="Uploaded preview"
-                    layout="fill"
-                    objectFit="contain"
+                    fill // Use fill for responsive layout
+                    style={{ objectFit: 'contain' }} // Replaces layout="fill" objectFit="contain"
                     data-ai-hint="uploaded image"
                   />
               </div>
